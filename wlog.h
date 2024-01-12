@@ -33,6 +33,30 @@
  * 	If being used with Pthreads, define WLOG_PTHREADS before including
  * 	this file.
  *
+ * Global variables:
+ *
+ *	int wlog_local
+ *		If wlog_local print local time else GMT, (default: GMT)
+ *
+ *	enum wlogt wlog_level
+ *		Log level. Levels greater than this will be ignored,
+ *		(default: WLOG_ERR).
+ *
+ *	char* wlog_name
+ *		Output this name in every message, (default: nothing).
+ *
+ *	FILE* wlog_out
+ *		Where to write log messages, (default: stderr).
+ *
+ *
+ * Log-levels:
+ *
+ *	WLOG_OFF
+ *	WLOG_ERR
+ *	WLOG_WRN
+ *	WLOG_NFO
+ *	WLOG_DBG
+ *
  *
  * Functions:
  *
@@ -42,28 +66,6 @@
  *             Writes a message to the log, if the loglevel of the message
  *             allowes it.
  *
- *
- *	void wlog_init(const char *name, enum wlogt lvl, FILE *out, int local);
- *
- *		Initializes wlog and sets required values.
- *
- *		[name]   is the application name that should be mentioned in
- *			 the logfile. (REQUIRED)
- *
- *		[level]  Which level of logging should be written.
- *			 WLOG_OFF	- nothing is printed
- *			 WLOG_ERR	- only errors are printed.
- *			 WLOG_WRN	- errors & warnings are printed
- *			 WLOG_NFO	- errors, warnings & infos are printed
- *			 WLOG_DBG	- all messages are printed
- *
- *		[out]    Stream to print messages to. (REQUIRED)
- *
- *		[local]  If 1, use local timestamps, otherwise GMT is used.
- *
- *	void wlog_level(enum wlogt level)
- *
- * 		Sets the log-level.
  *
  **/
 
@@ -83,9 +85,6 @@ enum wlogt {
 
 extern void wlog(enum wlogt type, const char *fmt, ...);
 extern void wlogv(enum wlogt type, const char *fmt, va_list a);
-extern void wlog_init(const char *name, enum wlogt lvl, FILE *out, int local);
-extern void wlog_set_level(enum wlogt lvl);
-extern void wlog_set_out(FILE *out);
 
 #ifdef WLOG_IMPL
 #include <time.h>
@@ -101,12 +100,12 @@ extern void wlog_set_out(FILE *out);
 static pthread_mutex_t wlog_mux = PTHREAD_MUTEX_INITIALIZER;
 #endif /* WLOG_PTHREADS */
 
-static FILE       *wlog_out    = NULL;
-static const char *wlog_name   = NULL;
-static int         wlog_loglvl = WLOG_ERR;
-static int         wlog_local  = 0;
+FILE       *wlog_out   = NULL;
+const char *wlog_name  = NULL;
+enum wlog   wlog_level = WLOG_ERR;
+int         wlog_local = 0;
 
-static char *wlog_strtime(time_t t)
+static char *_wlog_strtime(time_t t)
 {
 	struct tm *tm;
 	static char buf[20];
@@ -120,26 +119,29 @@ static char *wlog_strtime(time_t t)
 }
 void wlogv(enum wlogt type, const char *fmt, va_list a)
 {
+	FILE* o;
 	time_t t;
 	static char *types[] = { NULL, "ERR", "WRN", "INF", "DBG" };
 
-	assert((wlog_name && wlog_out) && "wlog.h not initialized correctly");
-
-	if (!wlog_loglvl || (type > wlog_loglvl)) return;
+	if (!wlog_level || (type > wlog_level))
+		return;
 	t = time(NULL);
+	o = wlog_out ? wlog_out : stderr;
 #ifdef WLOG_PTHREADS
 	pthread_mutex_lock(&wlog_mux);
 #endif /* WLOG_PTHREADS */
-	fputs(wlog_strtime(t), wlog_out);
-	fprintf(wlog_out, " - %s (%s): ", wlog_name, types[type]);
-	vfprintf(wlog_out, fmt, a);
-	fputc('\n', wlog_out);
-	fflush(wlog_out);
+	fputs(_wlog_strtime(t), o);
+	if (wlog_name)
+		fprintf(o, " - %s (%s): ", wlog_name, types[type]);
+	else
+		fprintf(o, " - (%s): ", types[type]);
+	vfprintf(o, fmt, a);
+	fputc('\n', o);
+	fflush(o);
 #ifdef WLOG_PTHREADS
 	pthread_mutex_unlock(&wlog_mux);
 #endif /* WLOG_PTHREADS */
 }
-
 void wlog(enum wlogt type, const char *fmt, ...)
 {
 	va_list a;
@@ -147,25 +149,6 @@ void wlog(enum wlogt type, const char *fmt, ...)
 	va_start(a, fmt);
 	wlogv(type, fmt, a);
 	va_end(a);
-}
-void wlog_init(const char *name, enum wlogt lvl, FILE *out, int local)
-{
-	assert(name && "[name] must not be NULL");
-
-	wlog_name = name;
-	wlog_local = local;
-	wlog_set_out(out);
-	wlog_set_level(lvl);
-} 
-void wlog_set_level(enum wlogt lvl)
-{
-	wlog_loglvl = lvl;
-}
-void wlog_set_out(FILE *out)
-{
-	assert(out && "[out] must not be NULL");
-
-	wlog_out = out;
 }
 
 #endif /* WLOG_IMPL */
