@@ -1,5 +1,5 @@
 # wlib
-A collection of single file includes
+A collection of public domain single file includes
 
 	- wiso.h - A convenient ANSI C ISO8601 library for timespec
 	- wlog.h - A tiny and simple logging library
